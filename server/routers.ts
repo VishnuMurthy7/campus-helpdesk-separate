@@ -7,7 +7,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { getAdminComplaints, getAdminStats, getDb, getPublicCategories, getPublicKnowledgeBaseEntries, getPublicSubcategories } from "./db";
+import { getAdminComplaints, getAdminStats, getDb, getPublicCategories, getPublicKnowledgeBaseEntries, getPublicSubcategories, searchPublicHelp } from "./db";
 
 const categoryInput = z.object({ name: z.string().trim().min(2).max(120), description: z.string().trim().max(1000).nullable().optional(), icon: z.string().trim().min(1).max(48).default("CircleHelp"), sortOrder: z.number().int().min(0).default(0), isActive: z.boolean().default(true) });
 const subcategoryInput = z.object({ categoryId: z.number().int().positive(), name: z.string().trim().min(2).max(120), description: z.string().trim().max(1000).nullable().optional(), sortOrder: z.number().int().min(0).default(0), isActive: z.boolean().default(true) });
@@ -47,6 +47,7 @@ export const appRouter = router({
     categories: publicProcedure.query(getPublicCategories),
     subcategories: publicProcedure.input(z.object({ categoryId: z.number().int().positive() })).query(({ input }) => getPublicSubcategories(input.categoryId)),
     questions: publicProcedure.input(z.object({ subcategoryId: z.number().int().positive() })).query(({ input }) => getPublicKnowledgeBaseEntries(input.subcategoryId)),
+    search: publicProcedure.input(z.object({ query: z.string().trim().min(2).max(80) })).query(({ input }) => searchPublicHelp(input.query)),
   }),
   publicRequests: router({
     submit: publicProcedure.input(z.object({

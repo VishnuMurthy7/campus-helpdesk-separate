@@ -1,8 +1,10 @@
 import { Link } from "wouter";
 import { ArrowRight, BookOpenCheck, CheckCircle2, Clock3, MessageSquarePlus, Search, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import PublicLayout from "@/components/PublicLayout";
+import { useDeferredValue, useMemo, useState } from "react";
 
 const iconNames: Record<string, typeof BookOpenCheck> = {
   CircleHelp: BookOpenCheck,
@@ -12,6 +14,11 @@ const iconNames: Record<string, typeof BookOpenCheck> = {
 
 export default function Home() {
   const { data: categories, isLoading } = trpc.catalog.categories.useQuery();
+  const [searchTerm, setSearchTerm] = useState("");
+  const deferredSearch = useDeferredValue(searchTerm.trim());
+  const canSearch = deferredSearch.length >= 2;
+  const searchInput = useMemo(() => ({ query: canSearch ? deferredSearch : "help" }), [canSearch, deferredSearch]);
+  const { data: searchResults, isFetching: searchLoading, isError: searchError } = trpc.catalog.search.useQuery(searchInput, { enabled: canSearch });
 
   return (
     <PublicLayout>
@@ -29,6 +36,14 @@ export default function Home() {
               <p className="mt-6 max-w-xl text-lg leading-8 text-[#486581]">
                 Find practical guidance, raise a request when you need to, and follow its progress—without creating an account.
               </p>
+              <div className="relative mt-7 max-w-xl">
+                <Search className="pointer-events-none absolute left-4 top-4 z-10 h-5 w-5 text-[#7e97aa]" />
+                <Input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} type="search" autoComplete="off" placeholder="Search fees, transport, lab access…" className="h-13 border-[#102a43]/15 bg-white/90 pl-12 pr-4 text-base shadow-[0_14px_30px_-24px_rgba(16,42,67,.55)] focus-visible:border-[#b8891d] focus-visible:ring-[#b8891d]/20" aria-label="Search campus help" />
+                {canSearch && <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-[#102a43]/10 bg-white shadow-[0_24px_50px_-30px_rgba(16,42,67,.48)]">
+                  {searchLoading ? <div className="p-5 text-sm text-[#5c7590]">Searching the help guide…</div> : searchError ? <div className="p-5 text-sm text-[#8a4b52]">Search is unavailable right now. Please try again.</div> : searchResults?.length ? <div className="divide-y divide-[#102a43]/8">{searchResults.map(result => <Link href="/help" key={`${result.kind}-${result.id}`} className="block px-5 py-4 transition-colors hover:bg-[#fdfbf4]"><div className="flex items-start gap-3"><span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg ${result.kind === "question" ? "bg-[#e9ece7] text-[#b8891d]" : "bg-[#eaf3fb] text-[#2c6593]"}`}>{result.kind === "question" ? <BookOpenCheck className="h-4 w-4" /> : <Search className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><span className="block text-xs font-bold uppercase tracking-[.12em] text-[#b8891d]">{result.kind === "question" ? "Predefined answer" : "Campus topic"}</span><strong className="mt-1 block text-sm text-[#102a43]">{result.title}</strong><span className="mt-1 block text-xs text-[#5c7590]">{result.kind === "question" ? result.answer : result.detail}</span></span><ArrowRight className="mt-2 h-4 w-4 shrink-0 text-[#a3b3c0]" /></div></Link>)}</div> : <div className="p-5 text-sm text-[#5c7590]">No help topics or answers match “{deferredSearch}”. <Link href="/submit" className="font-bold text-[#b8891d] hover:underline">Send a request instead</Link>.</div>}
+                </div>}
+                {!canSearch && searchTerm.length > 0 && <p className="mt-2 text-xs font-medium text-[#5c7590]">Enter at least two characters to search the help guide.</p>}
+              </div>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                 <Link href="/help"><Button size="lg" className="w-full gap-2 bg-[#102a43] px-6 text-white shadow-[0_10px_25px_-12px_rgba(16,42,67,.8)] hover:bg-[#163b5c] sm:w-auto">Browse campus help <ArrowRight className="h-4 w-4" /></Button></Link>
                 <Link href="/track"><Button size="lg" variant="outline" className="w-full border-[#102a43]/20 bg-white/65 px-6 text-[#102a43] hover:bg-white sm:w-auto">Track a request</Button></Link>

@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { BarChart3, BookOpenCheck, CheckCircle2, ChevronRight, CircleDot, Clock3, Edit3, FileText, Loader2, Plus, Search, ShieldAlert, Trash2, Users } from "lucide-react";
+import CategoryComplaintChart from "@/components/CategoryComplaintChart";
 
 const statusNames = { open: "Open", in_progress: "In progress", resolved: "Resolved", closed: "Closed" };
 const statusClasses = { open: "bg-[#fff6dc] text-[#9a7011]", in_progress: "bg-[#eaf3fb] text-[#2c6593]", resolved: "bg-[#e9f4eb] text-[#4c866c]", closed: "bg-[#edf0f2] text-[#536b7d]" };
@@ -72,6 +73,6 @@ function Forbidden() { return <div className="mx-auto flex min-h-[60vh] max-w-lg
 
 export default function Admin() {
   const { user, loading } = useAuth(); const [location] = useLocation();
-  const content = !loading && user?.role !== "admin" ? <Forbidden /> : location === "/admin/requests" ? <Requests /> : location === "/admin/topics" ? <Topics /> : location === "/admin/knowledge" ? <Knowledge /> : location === "/admin/users" ? <UserManagement /> : <Overview />;
+  const content = !loading && user?.role !== "admin" ? <Forbidden /> : location === "/admin/requests" ? <Requests /> : location === "/admin/topics" ? <Topics /> : location === "/admin/knowledge" ? <Knowledge /> : location === "/admin/users" ? <UserManagement /> : <><Overview /><CategoryComplaintChart /></>;
   return <DashboardLayout>{content}</DashboardLayout>;
 }

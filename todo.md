@@ -19,4 +19,8 @@
 - [x] Verify public submission persists a request and displays its generated tracking ID.
 - [x] Verify public tracking displays matching, not-found, and error states without authentication.
 - [x] Verify the administrator sign-in entry point and authorization applied to all administrative procedures.
-- [ ] Save the final checkpoint after completing the end-to-end verification.
+- [x] Save the final checkpoint after completing the end-to-end verification.
+- [x] Add a public homepage search bar that finds predefined questions and campus topics quickly.
+- [x] Add an administrator complaint statistics chart grouped by category.
+- [x] Test the new search and statistics visualizations.
+- [ ] Save the enhancement checkpoint.

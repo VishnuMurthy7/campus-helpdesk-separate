@@ -71,6 +71,30 @@ export async function getPublicKnowledgeBaseEntries(subcategoryId: number) {
   return db.select().from(knowledgeBaseEntries).where(and(eq(knowledgeBaseEntries.subcategoryId, subcategoryId), eq(knowledgeBaseEntries.isActive, true))).orderBy(asc(knowledgeBaseEntries.sortOrder), asc(knowledgeBaseEntries.id));
 }
 
+export async function searchPublicHelp(query: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const term = `%${query.trim()}%`;
+  const [topicMatches, questionMatches] = await Promise.all([
+    db.select({ id: categories.id, name: categories.name, description: categories.description })
+      .from(categories)
+      .where(and(eq(categories.isActive, true), or(like(categories.name, term), like(categories.description, term))!))
+      .orderBy(asc(categories.sortOrder), asc(categories.name))
+      .limit(4),
+    db.select({ id: knowledgeBaseEntries.id, question: knowledgeBaseEntries.question, answer: knowledgeBaseEntries.answer, categoryName: categories.name, subcategoryName: subcategories.name })
+      .from(knowledgeBaseEntries)
+      .innerJoin(subcategories, eq(knowledgeBaseEntries.subcategoryId, subcategories.id))
+      .innerJoin(categories, eq(subcategories.categoryId, categories.id))
+      .where(and(eq(knowledgeBaseEntries.isActive, true), eq(subcategories.isActive, true), eq(categories.isActive, true), or(like(knowledgeBaseEntries.question, term), like(knowledgeBaseEntries.answer, term), like(subcategories.name, term), like(categories.name, term))!))
+      .orderBy(asc(knowledgeBaseEntries.sortOrder), asc(knowledgeBaseEntries.id))
+      .limit(6),
+  ]);
+  return [
+    ...topicMatches.map(item => ({ kind: "topic" as const, id: item.id, title: item.name, detail: item.description || "Campus help topic" })),
+    ...questionMatches.map(item => ({ kind: "question" as const, id: item.id, title: item.question, detail: `${item.categoryName} · ${item.subcategoryName}`, answer: item.answer })),
+  ];
+}
+
 export async function getAdminComplaints(input: { status?: "open" | "in_progress" | "resolved" | "closed"; categoryId?: number; search?: string }) {
   const db = await getDb();
   if (!db) return [];

@@ -50,6 +50,7 @@ describe("Campus Helpdesk access controls", () => {
   it("permits anonymous visitors to reach the public complaint routes, while validating a tracking ID before a database lookup", async () => {
     const caller = appRouter.createCaller(createContext(null));
     await expect(caller.publicRequests.track({ trackingId: "not-a-tracking-id" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.catalog.search({ query: "x" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("requires a contact method when an anonymous visitor submits a public request", async () => {
