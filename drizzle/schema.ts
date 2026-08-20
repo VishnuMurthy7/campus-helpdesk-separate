@@ -22,8 +22,20 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+export const colleges = mysqlTable("colleges", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 160 }).notNull(),
+  code: varchar("code", { length: 48 }).notNull(),
+  location: varchar("location", { length: 160 }),
+  description: text("description"),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [unique("colleges_code_unq").on(table.code)]);
+
 export const categories = mysqlTable("categories", {
   id: int("id").autoincrement().primaryKey(),
+  collegeId: int("collegeId").notNull().references(() => colleges.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 120 }).notNull(),
   description: text("description"),
   icon: varchar("icon", { length: 48 }).default("CircleHelp").notNull(),
@@ -31,7 +43,7 @@ export const categories = mysqlTable("categories", {
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, table => [index("categories_college_idx").on(table.collegeId)]);
 
 export const subcategories = mysqlTable(
   "subcategories",
@@ -68,6 +80,7 @@ export const complaints = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     trackingId: varchar("trackingId", { length: 32 }).notNull(),
+    collegeId: int("collegeId").notNull().references(() => colleges.id, { onDelete: "cascade" }),
     type: mysqlEnum("type", ["complaint", "enquiry"]).notNull(),
     categoryId: int("categoryId").references(() => categories.id, { onDelete: "set null" }),
     subcategoryId: int("subcategoryId").references(() => subcategories.id, { onDelete: "set null" }),
@@ -83,6 +96,7 @@ export const complaints = mysqlTable(
   },
   table => [
     unique("complaints_tracking_id_unq").on(table.trackingId),
+    index("complaints_college_idx").on(table.collegeId),
     index("complaints_status_idx").on(table.status),
     index("complaints_category_idx").on(table.categoryId),
   ],
@@ -90,6 +104,7 @@ export const complaints = mysqlTable(
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+export type College = typeof colleges.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Subcategory = typeof subcategories.$inferSelect;
 export type KnowledgeBaseEntry = typeof knowledgeBaseEntries.$inferSelect;

@@ -9,7 +9,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { getAdminComplaints, getAdminStats, getDb, getPublicCategories, getPublicKnowledgeBaseEntries, getPublicSubcategories, searchPublicHelp } from "./db";
 
-const categoryInput = z.object({ name: z.string().trim().min(2).max(120), description: z.string().trim().max(1000).nullable().optional(), icon: z.string().trim().min(1).max(48).default("CircleHelp"), sortOrder: z.number().int().min(0).default(0), isActive: z.boolean().default(true) });
+const categoryInput = z.object({ collegeId: z.number().int().positive().default(1), name: z.string().trim().min(2).max(120), description: z.string().trim().max(1000).nullable().optional(), icon: z.string().trim().min(1).max(48).default("CircleHelp"), sortOrder: z.number().int().min(0).default(0), isActive: z.boolean().default(true) });
 const subcategoryInput = z.object({ categoryId: z.number().int().positive(), name: z.string().trim().min(2).max(120), description: z.string().trim().max(1000).nullable().optional(), sortOrder: z.number().int().min(0).default(0), isActive: z.boolean().default(true) });
 const knowledgeInput = z.object({ subcategoryId: z.number().int().positive(), question: z.string().trim().min(5).max(2000), answer: z.string().trim().min(5).max(8000), sortOrder: z.number().int().min(0).default(0), isActive: z.boolean().default(true) });
 const statusSchema = z.enum(["open", "in_progress", "resolved", "closed"]);
@@ -51,7 +51,7 @@ export const appRouter = router({
   }),
   publicRequests: router({
     submit: publicProcedure.input(z.object({
-      type: z.enum(["complaint", "enquiry"]), categoryId: z.number().int().positive().nullable().optional(), subcategoryId: z.number().int().positive().nullable().optional(),
+      collegeId: z.number().int().positive().default(1), type: z.enum(["complaint", "enquiry"]), categoryId: z.number().int().positive().nullable().optional(), subcategoryId: z.number().int().positive().nullable().optional(),
       subject: z.string().trim().min(5).max(200), description: z.string().trim().min(15).max(8000), contactName: z.string().trim().min(2).max(120),
       contactEmail: z.string().trim().email().max(320).nullable().optional(), contactPhone: z.string().trim().min(7).max(32).nullable().optional(),
     }).refine(data => Boolean(data.contactEmail || data.contactPhone), { message: "Provide an email address or phone number so the campus team can respond.", path: ["contactEmail"] }))

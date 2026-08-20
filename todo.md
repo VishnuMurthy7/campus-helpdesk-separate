@@ -23,4 +23,4 @@
 - [x] Add a public homepage search bar that finds predefined questions and campus topics quickly.
 - [x] Add an administrator complaint statistics chart grouped by category.
 - [x] Test the new search and statistics visualizations.
-- [ ] Save the enhancement checkpoint.
+- [x] Save the enhancement checkpoint.
