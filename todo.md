@@ -1,0 +1,22 @@
+# Project TODO
+
+- [x] Define relational database tables for categories, sub-categories, knowledge-base questions, and public complaints.
+- [x] Add backend procedures with input validation and strict role-based authorization for every admin action.
+- [x] Build an elegant responsive public portal with category-to-question guided help flow.
+- [x] Build a public complaint and enquiry submission form that issues a unique tracking ID.
+- [x] Build a public tracking page that shows a complaint's status using its tracking ID only.
+- [x] Build a secure admin sign-in entry point and protect all administrative views and procedures.
+- [x] Build the admin dashboard with total, open, in-progress, resolved, and category statistics.
+- [x] Build category and sub-category create, edit, and delete management.
+- [x] Build knowledge-base question and answer create, edit, and delete management.
+- [x] Build complaint viewing, filtering, and status update management.
+- [x] Build registered-user viewing and role-management controls.
+- [x] Add initial campus help categories, sub-categories, and helpful Q&A content for the demo.
+- [x] Write automated backend tests for public tracking, submission, and administrative authorization.
+- [x] Run TypeScript checks, tests, migration verification, and visual responsive checks.
+- [x] Save a completed project checkpoint and prepare the handoff.
+- [x] Verify the public category-to-question guided-help flow, including loading, empty, and error states.
+- [x] Verify public submission persists a request and displays its generated tracking ID.
+- [x] Verify public tracking displays matching, not-found, and error states without authentication.
+- [x] Verify the administrator sign-in entry point and authorization applied to all administrative procedures.
+- [ ] Save the final checkpoint after completing the end-to-end verification.
