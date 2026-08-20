@@ -2,7 +2,6 @@ import { and, asc, count, desc, eq, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   categories,
-  colleges,
   complaints,
   InsertUser,
   knowledgeBaseEntries,
@@ -54,16 +53,10 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
-export async function getPublicColleges() {
+export async function getPublicCategories() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(colleges).where(eq(colleges.isActive, true)).orderBy(asc(colleges.name));
-}
-
-export async function getPublicCategories(collegeId: number) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(categories).where(and(eq(categories.collegeId, collegeId), eq(categories.isActive, true))).orderBy(asc(categories.sortOrder), asc(categories.name));
+  return db.select().from(categories).where(eq(categories.isActive, true)).orderBy(asc(categories.sortOrder), asc(categories.name));
 }
 
 export async function getPublicSubcategories(categoryId: number) {
@@ -78,21 +71,21 @@ export async function getPublicKnowledgeBaseEntries(subcategoryId: number) {
   return db.select().from(knowledgeBaseEntries).where(and(eq(knowledgeBaseEntries.subcategoryId, subcategoryId), eq(knowledgeBaseEntries.isActive, true))).orderBy(asc(knowledgeBaseEntries.sortOrder), asc(knowledgeBaseEntries.id));
 }
 
-export async function searchPublicHelp(input: { collegeId: number; query: string }) {
+export async function searchPublicHelp(query: string) {
   const db = await getDb();
   if (!db) return [];
-  const term = `%${input.query.trim()}%`;
+  const term = `%${query.trim()}%`;
   const [topicMatches, questionMatches] = await Promise.all([
     db.select({ id: categories.id, name: categories.name, description: categories.description })
       .from(categories)
-      .where(and(eq(categories.collegeId, input.collegeId), eq(categories.isActive, true), or(like(categories.name, term), like(categories.description, term))!))
+      .where(and(eq(categories.isActive, true), or(like(categories.name, term), like(categories.description, term))!))
       .orderBy(asc(categories.sortOrder), asc(categories.name))
       .limit(4),
     db.select({ id: knowledgeBaseEntries.id, question: knowledgeBaseEntries.question, answer: knowledgeBaseEntries.answer, categoryName: categories.name, subcategoryName: subcategories.name })
       .from(knowledgeBaseEntries)
       .innerJoin(subcategories, eq(knowledgeBaseEntries.subcategoryId, subcategories.id))
       .innerJoin(categories, eq(subcategories.categoryId, categories.id))
-      .where(and(eq(categories.collegeId, input.collegeId), eq(knowledgeBaseEntries.isActive, true), eq(subcategories.isActive, true), eq(categories.isActive, true), or(like(knowledgeBaseEntries.question, term), like(knowledgeBaseEntries.answer, term), like(subcategories.name, term), like(categories.name, term))!))
+      .where(and(eq(knowledgeBaseEntries.isActive, true), eq(subcategories.isActive, true), eq(categories.isActive, true), or(like(knowledgeBaseEntries.question, term), like(knowledgeBaseEntries.answer, term), like(subcategories.name, term), like(categories.name, term))!))
       .orderBy(asc(knowledgeBaseEntries.sortOrder), asc(knowledgeBaseEntries.id))
       .limit(6),
   ]);
@@ -102,11 +95,10 @@ export async function searchPublicHelp(input: { collegeId: number; query: string
   ];
 }
 
-export async function getAdminComplaints(input: { collegeId?: number; status?: "open" | "in_progress" | "resolved" | "closed"; categoryId?: number; search?: string }) {
+export async function getAdminComplaints(input: { status?: "open" | "in_progress" | "resolved" | "closed"; categoryId?: number; search?: string }) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
-  if (input.collegeId) conditions.push(eq(complaints.collegeId, input.collegeId));
   if (input.status) conditions.push(eq(complaints.status, input.status));
   if (input.categoryId) conditions.push(eq(complaints.categoryId, input.categoryId));
   if (input.search?.trim()) {
@@ -121,19 +113,18 @@ export async function getAdminComplaints(input: { collegeId?: number; status?: "
     .orderBy(desc(complaints.createdAt));
 }
 
-export async function getAdminStats(collegeId?: number) {
+export async function getAdminStats() {
   const db = await getDb();
   if (!db) return { total: 0, open: 0, inProgress: 0, resolved: 0, closed: 0, categoryBreakdown: [] as { name: string; total: number }[] };
-  const complaintCondition = collegeId ? eq(complaints.collegeId, collegeId) : undefined;
   const [totals] = await db.select({
     total: count(),
     open: sql<number>`coalesce(sum(case when ${complaints.status} = 'open' then 1 else 0 end), 0)`,
     inProgress: sql<number>`coalesce(sum(case when ${complaints.status} = 'in_progress' then 1 else 0 end), 0)`,
     resolved: sql<number>`coalesce(sum(case when ${complaints.status} = 'resolved' then 1 else 0 end), 0)`,
     closed: sql<number>`coalesce(sum(case when ${complaints.status} = 'closed' then 1 else 0 end), 0)`,
-  }).from(complaints).where(complaintCondition);
+  }).from(complaints);
   const categoryBreakdown = await db.select({ name: categories.name, total: count(complaints.id) })
     .from(categories).leftJoin(complaints, eq(complaints.categoryId, categories.id))
-    .where(collegeId ? eq(categories.collegeId, collegeId) : undefined).groupBy(categories.id, categories.name).orderBy(desc(count(complaints.id))).limit(6);
+    .groupBy(categories.id, categories.name).orderBy(desc(count(complaints.id))).limit(6);
   return { ...totals, categoryBreakdown: categoryBreakdown.map(item => ({ name: item.name, total: Number(item.total) })) };
 }
