@@ -4,12 +4,14 @@ import { ArrowLeft, ArrowRight, BookOpenCheck, CheckCircle2, ChevronRight, Circl
 import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
+import { useCollege } from "@/contexts/CollegeContext";
 
 export default function Help() {
+  const { college } = useCollege();
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [subcategoryId, setSubcategoryId] = useState<number | null>(null);
   const [questionId, setQuestionId] = useState<number | null>(null);
-  const { data: categories, isLoading: categoriesLoading, isError: categoriesError } = trpc.catalog.categories.useQuery();
+  const { data: categories, isLoading: categoriesLoading, isError: categoriesError } = trpc.catalog.categories.useQuery({ collegeId: college?.id ?? 0 }, { enabled: Boolean(college) });
   const { data: subcategories, isLoading: subcategoriesLoading, isError: subcategoriesError } = trpc.catalog.subcategories.useQuery({ categoryId: categoryId ?? 0 }, { enabled: Boolean(categoryId) });
   const { data: questions, isLoading: questionsLoading, isError: questionsError } = trpc.catalog.questions.useQuery({ subcategoryId: subcategoryId ?? 0 }, { enabled: Boolean(subcategoryId) });
   const selectedCategory = categories?.find(item => item.id === categoryId);
@@ -21,6 +23,7 @@ export default function Help() {
   const selectCategory = (id: number) => { setCategoryId(id); setSubcategoryId(null); setQuestionId(null); };
   const selectSubcategory = (id: number) => { setSubcategoryId(id); setQuestionId(null); };
 
+  if (!college) return <PublicLayout><main className="container py-20 text-center"><h1 className="font-serif text-4xl font-semibold">Choose a college first.</h1><Link href="/"><Button className="mt-5 bg-[#102a43] text-white">Find your college</Button></Link></main></PublicLayout>;
   return <PublicLayout><main className="container py-12 sm:py-16">
     <div className="max-w-3xl"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#b8891d]">Guided campus help</p><h1 className="mt-3 font-serif text-4xl font-semibold tracking-tight text-[#102a43] sm:text-5xl">Let’s find your answer.</h1><p className="mt-4 text-lg leading-8 text-[#5c7590]">Choose a topic, then a focused area. We will bring you the relevant information in a few simple steps.</p></div>
     <div className="mt-10 flex flex-wrap items-center gap-2 text-sm"><span className={`rounded-full px-3 py-1.5 font-medium ${!categoryId ? "bg-[#102a43] text-white" : "bg-[#e9ece7] text-[#486581]"}`}>1. Topic</span><ChevronRight className="h-4 w-4 text-[#9fb0be]" /><span className={`rounded-full px-3 py-1.5 font-medium ${categoryId && !subcategoryId ? "bg-[#102a43] text-white" : "bg-[#e9ece7] text-[#486581]"}`}>2. Area</span><ChevronRight className="h-4 w-4 text-[#9fb0be]" /><span className={`rounded-full px-3 py-1.5 font-medium ${subcategoryId ? "bg-[#102a43] text-white" : "bg-[#e9ece7] text-[#486581]"}`}>3. Answer</span></div>

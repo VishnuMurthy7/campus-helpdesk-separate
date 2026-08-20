@@ -49,13 +49,15 @@ describe("Campus Helpdesk access controls", () => {
 
   it("permits anonymous visitors to reach the public complaint routes, while validating a tracking ID before a database lookup", async () => {
     const caller = appRouter.createCaller(createContext(null));
-    await expect(caller.publicRequests.track({ trackingId: "not-a-tracking-id" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    await expect(caller.catalog.search({ query: "x" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.publicRequests.track({ collegeId: 1, trackingId: "not-a-tracking-id" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.catalog.search({ collegeId: 1, query: "x" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.catalog.categories({ collegeId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("requires a contact method when an anonymous visitor submits a public request", async () => {
     const caller = appRouter.createCaller(createContext(null));
     await expect(caller.publicRequests.submit({
+      collegeId: 1,
       type: "enquiry",
       subject: "Library access question",
       description: "I need help understanding the library access process.",
