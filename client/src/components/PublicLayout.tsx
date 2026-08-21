@@ -20,7 +20,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
               <BookOpenCheck className="h-5 w-5" strokeWidth={2.25} />
             </span>
             <span className="leading-tight">
-              <span className="block font-serif text-lg font-semibold tracking-tight">CampAssist</span>
+              <span className="block font-serif text-lg font-semibold tracking-tight">Campus Helpdesk</span>
               <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-[#5c7590]">Answers, made simple</span>
             </span>
           </Link>
@@ -54,7 +54,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       {children}
       <footer className="border-t border-[#102a43]/10 bg-white">
         <div className="container flex flex-col gap-3 py-7 text-sm text-[#5c7590] sm:flex-row sm:items-center sm:justify-between">
-          <p className="flex items-center gap-2"><CircleUserRound className="h-4 w-4 text-[#b8891d]" /> CampAssist is here to guide you.</p>
+          <p className="flex items-center gap-2"><CircleUserRound className="h-4 w-4 text-[#b8891d]" /> Campus Helpdesk is here to guide you.</p>
           <div className="flex gap-5 text-xs font-semibold uppercase tracking-[0.12em]">
             <Link href="/track" className="hover:text-[#102a43]">Track a request</Link>
             <Link href="/admin" className="hover:text-[#102a43]">Staff access</Link>
