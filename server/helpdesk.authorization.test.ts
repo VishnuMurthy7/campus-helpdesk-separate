@@ -2,66 +2,35 @@ import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 
-function createContext(role: "user" | "admin" | null): TrpcContext {
+function createContext(): TrpcContext {
   return {
-    user: role ? {
-      id: 42,
-      openId: "test-user",
-      name: "Test User",
-      email: "test@example.edu",
-      loginMethod: "manus",
-      role,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      lastSignedIn: new Date(),
-    } : null,
-    req: { protocol: "https", headers: {} } as TrpcContext["req"],
+    user: null,
+    admin: null,
+    req: { protocol: "https", headers: {}, get: () => "localhost" } as TrpcContext["req"],
     res: {} as TrpcContext["res"],
   };
 }
 
-describe("Campus Helpdesk access controls", () => {
-  it("rejects an ordinary signed-in user from the administrator statistics route", async () => {
-    const caller = appRouter.createCaller(createContext("user"));
-    await expect(caller.admin.stats()).rejects.toMatchObject({ code: "FORBIDDEN" });
+describe("Campus Helpdesk custom administrator access controls", () => {
+  it("rejects every administrator workflow without a persistent administrator session", async () => {
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.admin.stats()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.admin.categories.list()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.admin.categories.create({ name: "Finance", description: null })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.admin.subcategories.list()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.admin.knowledge.list()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.admin.complaints.list({})).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.adminAuth.changePassword({ currentPassword: "CampusAdmin7", password: "CampusAdmin8" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
-  it("rejects an ordinary signed-in user from every administrator management procedure", async () => {
-    const caller = appRouter.createCaller(createContext("user"));
-
-    await expect(caller.admin.categories.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.categories.create({ name: "Finance", description: null })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.categories.update({ id: 1, name: "Finance", description: null })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.categories.delete({ id: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.subcategories.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.subcategories.create({ categoryId: 1, name: "Payments", description: null })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.subcategories.update({ id: 1, categoryId: 1, name: "Payments", description: null })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.subcategories.delete({ id: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.knowledge.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.knowledge.create({ subcategoryId: 1, question: "Where can I pay tuition fees?", answer: "Use the approved payment portal." })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.knowledge.update({ id: 1, subcategoryId: 1, question: "Where can I pay tuition fees?", answer: "Use the approved payment portal." })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.knowledge.delete({ id: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.complaints.list({})).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.complaints.update({ id: 1, status: "resolved" })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.users.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.admin.users.updateRole({ id: 1, role: "admin" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  it("requires a selected college before public searches and request tracking can query the database", async () => {
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.catalog.search({ collegeId: 1, query: "x" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.requests.track({ collegeId: 1, trackingId: "x" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
-  it("permits anonymous visitors to reach the public complaint routes, while validating a tracking ID before a database lookup", async () => {
-    const caller = appRouter.createCaller(createContext(null));
-    await expect(caller.publicRequests.track({ trackingId: "not-a-tracking-id" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    await expect(caller.catalog.search({ query: "x" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
-  });
-
-  it("requires a contact method when an anonymous visitor submits a public request", async () => {
-    const caller = appRouter.createCaller(createContext(null));
-    await expect(caller.publicRequests.submit({
-      type: "enquiry",
-      subject: "Library access question",
-      description: "I need help understanding the library access process.",
-      contactName: "Sample Student",
-      contactEmail: null,
-      contactPhone: null,
-    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  it("requires a college name, registered email, and secure password to create an administrator account", async () => {
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.adminAuth.register({ collegeName: "", email: "not-an-email", password: "short" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });

@@ -24,3 +24,21 @@
 - [x] Add an administrator complaint statistics chart grouped by category.
 - [x] Test the new search and statistics visualizations.
 - [x] Save the enhancement checkpoint.
+- [x] Add a welcome-first college search that accepts a college name or generated 10-character college code.
+- [x] Store college profiles with unique generated mixed-case alphanumeric codes.
+- [x] Add persistent administrator accounts linked to a college, using securely hashed passwords and authenticated sessions.
+- [x] Restrict all administrator pages and account flows to desktop/laptop screen sizes with a clear mobile/tablet block.
+- [x] Add a public launcher that distinguishes opening the campus helpdesk from running it as an administrator.
+- [x] Add administrator account registration requiring college name, registered email, and password.
+- [x] Add administrator login, explicit logout, and a persistent secure session that remains active until logout or expiry.
+- [x] Add a password change flow requiring the current password, new password, and confirmation.
+- [x] Add a secure forgotten-password email-reset flow for registered administrator emails.
+- [x] Scope administrator content, requests, and statistics to the account's linked college.
+- [x] Add full administrator create, edit, and delete flows for topics, areas, and predefined Q&A.
+- [x] Add answer-image upload, storage, editing, and public answer display.
+- [x] Add multi-college seed content and test secure account, reset, college-scope, and content-management workflows.
+- [ ] Save the completed administrator-account and multi-college checkpoint.
+- [x] Verify every new college receives a unique exactly 10-character code containing uppercase letters, lowercase letters, and numbers.
+- [x] Verify forgotten-password requests create one-time reset links and send them only to the matching registered administrator email.
+- [x] Verify the welcome screen renders separate public and administrator launch actions in the final build.
+- [x] Seed and verify distinct topics, areas, and predefined Q&A for at least two colleges in the rebuilt multi-college platform.

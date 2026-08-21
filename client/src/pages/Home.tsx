@@ -1,84 +1,43 @@
-import { Link } from "wouter";
-import { ArrowRight, BookOpenCheck, CheckCircle2, Clock3, MessageSquarePlus, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { Building2, ChevronRight, KeyRound, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { useDeferredValue, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { trpc } from "@/lib/trpc";
 import PublicLayout from "@/components/PublicLayout";
-import { useDeferredValue, useMemo, useState } from "react";
-
-const iconNames: Record<string, typeof BookOpenCheck> = {
-  CircleHelp: BookOpenCheck,
-  Landmark: ShieldCheck,
-  Search,
-};
+import { useCollege } from "@/contexts/CollegeContext";
+import { trpc } from "@/lib/trpc";
 
 export default function Home() {
-  const { data: categories, isLoading } = trpc.catalog.categories.useQuery();
-  const [searchTerm, setSearchTerm] = useState("");
-  const deferredSearch = useDeferredValue(searchTerm.trim());
-  const canSearch = deferredSearch.length >= 2;
-  const searchInput = useMemo(() => ({ query: canSearch ? deferredSearch : "help" }), [canSearch, deferredSearch]);
-  const { data: searchResults, isFetching: searchLoading, isError: searchError } = trpc.catalog.search.useQuery(searchInput, { enabled: canSearch });
-
-  return (
-    <PublicLayout>
-      <main>
-        <section className="relative isolate overflow-hidden border-b border-[#102a43]/10 bg-[#e9ece7]">
-          <div className="absolute inset-0 -z-10 opacity-80" style={{ backgroundImage: "radial-gradient(circle at 16% 20%, rgba(232,197,105,.5), transparent 28%), radial-gradient(circle at 83% 70%, rgba(144,190,168,.48), transparent 28%)" }} />
-          <div className="container grid min-h-[560px] items-center gap-12 py-16 lg:grid-cols-[1.1fr_.9fr] lg:py-20">
-            <div className="max-w-2xl">
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#b8891d]/25 bg-white/70 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-[#856310]">
-                <Sparkles className="h-3.5 w-3.5" /> Campus support, at your pace
-              </div>
-              <h1 className="font-serif text-5xl font-semibold leading-[1.04] tracking-[-0.045em] text-[#102a43] sm:text-6xl lg:text-7xl">
-                Clear answers for every <span className="text-[#b8891d]">campus day.</span>
-              </h1>
-              <p className="mt-6 max-w-xl text-lg leading-8 text-[#486581]">
-                Find practical guidance, raise a request when you need to, and follow its progress—without creating an account.
-              </p>
-              <div className="relative mt-7 max-w-xl">
-                <Search className="pointer-events-none absolute left-4 top-4 z-10 h-5 w-5 text-[#7e97aa]" />
-                <Input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} type="search" autoComplete="off" placeholder="Search fees, transport, lab access…" className="h-13 border-[#102a43]/15 bg-white/90 pl-12 pr-4 text-base shadow-[0_14px_30px_-24px_rgba(16,42,67,.55)] focus-visible:border-[#b8891d] focus-visible:ring-[#b8891d]/20" aria-label="Search campus help" />
-                {canSearch && <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-[#102a43]/10 bg-white shadow-[0_24px_50px_-30px_rgba(16,42,67,.48)]">
-                  {searchLoading ? <div className="p-5 text-sm text-[#5c7590]">Searching the help guide…</div> : searchError ? <div className="p-5 text-sm text-[#8a4b52]">Search is unavailable right now. Please try again.</div> : searchResults?.length ? <div className="divide-y divide-[#102a43]/8">{searchResults.map(result => <Link href="/help" key={`${result.kind}-${result.id}`} className="block px-5 py-4 transition-colors hover:bg-[#fdfbf4]"><div className="flex items-start gap-3"><span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg ${result.kind === "question" ? "bg-[#e9ece7] text-[#b8891d]" : "bg-[#eaf3fb] text-[#2c6593]"}`}>{result.kind === "question" ? <BookOpenCheck className="h-4 w-4" /> : <Search className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><span className="block text-xs font-bold uppercase tracking-[.12em] text-[#b8891d]">{result.kind === "question" ? "Predefined answer" : "Campus topic"}</span><strong className="mt-1 block text-sm text-[#102a43]">{result.title}</strong><span className="mt-1 block text-xs text-[#5c7590]">{result.kind === "question" ? result.answer : result.detail}</span></span><ArrowRight className="mt-2 h-4 w-4 shrink-0 text-[#a3b3c0]" /></div></Link>)}</div> : <div className="p-5 text-sm text-[#5c7590]">No help topics or answers match “{deferredSearch}”. <Link href="/submit" className="font-bold text-[#b8891d] hover:underline">Send a request instead</Link>.</div>}
-                </div>}
-                {!canSearch && searchTerm.length > 0 && <p className="mt-2 text-xs font-medium text-[#5c7590]">Enter at least two characters to search the help guide.</p>}
-              </div>
-              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <Link href="/help"><Button size="lg" className="w-full gap-2 bg-[#102a43] px-6 text-white shadow-[0_10px_25px_-12px_rgba(16,42,67,.8)] hover:bg-[#163b5c] sm:w-auto">Browse campus help <ArrowRight className="h-4 w-4" /></Button></Link>
-                <Link href="/track"><Button size="lg" variant="outline" className="w-full border-[#102a43]/20 bg-white/65 px-6 text-[#102a43] hover:bg-white sm:w-auto">Track a request</Button></Link>
-              </div>
-              <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-sm font-medium text-[#35556f]">
-                <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-[#5b9279]" /> No sign-up required</span>
-                <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-[#5b9279]" /> Private tracking ID</span>
-              </div>
+  const [, setLocation] = useLocation();
+  const { college, selectCollege, clearCollege } = useCollege();
+  const [query, setQuery] = useState("");
+  const deferred = useDeferredValue(query.trim());
+  const { data: matches, isFetching } = trpc.colleges.search.useQuery({ query: deferred });
+  useEffect(() => { if (college) setQuery(college.name); }, [college?.id]);
+  const choose = (item: { id: number; name: string; code: string }) => { selectCollege(item); setQuery(item.name); };
+  return <PublicLayout>
+    <main>
+      <section className="relative isolate overflow-hidden bg-[#e9ece7] py-16 sm:py-24">
+        <div className="absolute inset-0 -z-10 opacity-75" style={{ backgroundImage: "radial-gradient(circle at 14% 18%, rgba(232,197,105,.55), transparent 26%), radial-gradient(circle at 87% 75%, rgba(144,190,168,.46), transparent 28%)" }} />
+        <div className="container grid items-center gap-10 lg:grid-cols-[1.1fr_.9fr]">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#b8891d]/25 bg-white/70 px-3 py-1.5 text-xs font-bold uppercase tracking-[.14em] text-[#856310]"><Sparkles className="h-3.5 w-3.5" /> College support, made clear</div>
+            <p className="mt-8 font-serif text-2xl font-semibold tracking-[-.03em] text-[#b8891d]">WELCOME</p>
+            <h1 className="mt-2 font-serif text-5xl font-semibold leading-[1.04] tracking-[-.05em] text-[#102a43] sm:text-6xl">Find your college. <span className="text-[#b8891d]">Find your answer.</span></h1>
+            <p className="mt-6 max-w-xl text-lg leading-8 text-[#486581]">Search using your college name or its 10-character campus code to open the right helpdesk.</p>
+            <div className="relative mt-8 max-w-xl">
+              <Search className="pointer-events-none absolute left-4 top-4 h-5 w-5 text-[#7e97aa]" />
+              <Input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search college name or 10-character code" className="h-13 border-[#102a43]/15 bg-white pl-12 text-base shadow-[0_14px_30px_-24px_rgba(16,42,67,.55)]" aria-label="Search colleges" />
+              {query && <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-[#102a43]/10 bg-white shadow-[0_24px_50px_-30px_rgba(16,42,67,.45)]">
+                {isFetching ? <p className="p-5 text-sm text-[#5c7590]">Finding colleges…</p> : matches?.length ? matches.map(item => <button type="button" key={item.id} onClick={() => choose(item)} className="flex w-full items-center gap-3 border-b border-[#102a43]/8 px-5 py-4 text-left last:border-0 hover:bg-[#fdfbf4]"><span className="grid h-9 w-9 place-items-center rounded-xl bg-[#e9ece7] text-[#b8891d]"><Building2 className="h-4 w-4" /></span><span className="min-w-0 flex-1"><strong className="block text-sm text-[#102a43]">{item.name}</strong><span className="mt-1 block font-mono text-xs font-semibold text-[#856310]">{item.code}{item.location ? ` · ${item.location}` : ""}</span></span><ChevronRight className="h-4 w-4 text-[#a3b3c0]" /></button>) : <p className="p-5 text-sm text-[#5c7590]">No college matched that name or code. Ask a campus administrator to create its helpdesk.</p>}
+              </div>}
             </div>
-            <div className="relative mx-auto w-full max-w-md lg:ml-auto">
-              <div className="absolute -inset-7 rounded-[2.5rem] border border-white/60 bg-white/25 -rotate-6" />
-              <div className="relative rounded-[2rem] border border-white/80 bg-[#102a43] p-6 shadow-[0_30px_70px_-30px_rgba(16,42,67,.65)]">
-                <div className="flex items-center justify-between border-b border-white/15 pb-5"><span className="font-serif text-xl font-semibold text-white">How can we help?</span><span className="grid h-9 w-9 place-items-center rounded-xl bg-[#e8c569] text-[#102a43]"><BookOpenCheck className="h-5 w-5" /></span></div>
-                {["Choose a campus topic", "Select a focused area", "Get a direct answer"].map((step, index) => <div key={step} className="flex items-center gap-4 border-b border-white/10 py-5 last:border-0"><span className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-sm font-bold text-[#e8c569]">0{index + 1}</span><p className="font-medium text-white">{step}</p><ArrowRight className="ml-auto h-4 w-4 text-white/40" /></div>)}
-                <div className="mt-3 rounded-xl bg-white/10 p-4 text-sm leading-6 text-[#d8e1e8]"><span className="font-semibold text-[#e8c569]">Still need help?</span> Send a request directly to the campus team.</div>
-              </div>
-            </div>
+            {college && <div className="mt-6 flex flex-wrap items-center gap-3"><span className="inline-flex items-center gap-2 rounded-xl border border-[#5b9279]/25 bg-white/70 px-3 py-2 text-sm font-semibold text-[#35556f]"><ShieldCheck className="h-4 w-4 text-[#5b9279]" /> {college.name} <span className="font-mono text-xs text-[#856310]">{college.code}</span></span><button onClick={clearCollege} className="text-sm font-semibold text-[#5c7590] hover:text-[#102a43]">Change college</button></div>}
+            <div className="mt-9 flex flex-col gap-3 sm:flex-row"><Button size="lg" disabled={!college} onClick={() => setLocation("/help")} className="gap-2 bg-[#102a43] text-white hover:bg-[#163b5c]">Open app <ChevronRight className="h-4 w-4" /></Button><Link href="/admin"><Button size="lg" variant="outline" className="gap-2 border-[#102a43]/20 bg-white/70 text-[#102a43] hover:bg-white"><KeyRound className="h-4 w-4" /> Run as administrator</Button></Link></div>
           </div>
-        </section>
-
-        <section className="container py-16 sm:py-20">
-          <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-            <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#b8891d]">Start here</p><h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight text-[#102a43] sm:text-4xl">Explore campus support</h2></div>
-            <Link href="/help" className="group inline-flex items-center gap-2 text-sm font-bold text-[#102a43]">View all help topics <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></Link>
-          </div>
-          <div className="mt-9 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {isLoading ? Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-44 animate-pulse rounded-2xl bg-[#e9ece7]" />) : categories?.slice(0, 6).map(category => {
-              const Icon = iconNames[category.icon] ?? BookOpenCheck;
-              return <Link key={category.id} href="/help" className="group rounded-2xl border border-[#102a43]/10 bg-white p-6 shadow-[0_12px_35px_-28px_rgba(16,42,67,.45)] transition-all duration-200 hover:-translate-y-1 hover:border-[#b8891d]/35 hover:shadow-[0_18px_35px_-22px_rgba(16,42,67,.3)]"><div className="flex items-start justify-between"><span className="grid h-11 w-11 place-items-center rounded-xl bg-[#e9ece7] text-[#b8891d]"><Icon className="h-5 w-5" /></span><ArrowRight className="h-5 w-5 text-[#97aabd] transition-transform group-hover:translate-x-1 group-hover:text-[#b8891d]" /></div><h3 className="mt-8 font-serif text-xl font-semibold text-[#102a43]">{category.name}</h3><p className="mt-2 line-clamp-2 text-sm leading-6 text-[#5c7590]">{category.description || "Explore answers and next steps for this campus service."}</p></Link>;
-            })}
-          </div>
-        </section>
-
-        <section className="border-y border-[#102a43]/10 bg-white"><div className="container grid gap-8 py-12 md:grid-cols-3"><div className="flex gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#e9ece7] text-[#b8891d]"><Search className="h-5 w-5" /></span><div><h3 className="font-semibold">Find the right answer</h3><p className="mt-1 text-sm leading-6 text-[#5c7590]">Follow a short, guided path through campus information.</p></div></div><div className="flex gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#e9ece7] text-[#b8891d]"><MessageSquarePlus className="h-5 w-5" /></span><div><h3 className="font-semibold">Raise a request</h3><p className="mt-1 text-sm leading-6 text-[#5c7590]">When an answer is not enough, let the right team know.</p></div></div><div className="flex gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#e9ece7] text-[#b8891d]"><Clock3 className="h-5 w-5" /></span><div><h3 className="font-semibold">Stay in the loop</h3><p className="mt-1 text-sm leading-6 text-[#5c7590]">Use your private tracking ID to check for progress.</p></div></div></div></section>
-      </main>
-    </PublicLayout>
-  );
+          <aside className="rounded-[2rem] bg-[#102a43] p-7 text-white shadow-[0_30px_70px_-30px_rgba(16,42,67,.65)] sm:p-9"><span className="grid h-11 w-11 place-items-center rounded-xl bg-white/10 text-[#e8c569]"><Building2 className="h-5 w-5" /></span><h2 className="mt-7 font-serif text-3xl font-semibold">One helpdesk, tailored to each campus.</h2><p className="mt-4 text-sm leading-7 text-white/70">Students can browse guidance, submit an enquiry, or track a request without an account. Campus teams maintain their own topics, areas, answers, and visual instructions.</p><div className="mt-8 space-y-4 border-t border-white/10 pt-6 text-sm"><p><span className="mr-3 font-serif text-xl text-[#e8c569]">01</span> Search and choose your college</p><p><span className="mr-3 font-serif text-xl text-[#e8c569]">02</span> Follow its support guide</p><p><span className="mr-3 font-serif text-xl text-[#e8c569]">03</span> Raise or track a request</p></div></aside>
+        </div>
+      </section>
+    </main>
+  </PublicLayout>;
 }

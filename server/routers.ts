@@ -1,38 +1,34 @@
-import { randomBytes } from "crypto";
+import crypto from "node:crypto";
+import { and, asc, eq, gt, like, or } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { categories, complaints, knowledgeBaseEntries, subcategories, users } from "../drizzle/schema";
 import { COOKIE_NAME } from "@shared/const";
-import { getSessionCookieOptions } from "./_core/cookies";
-import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminAccounts, adminPasswordResets, adminSessions, categories, colleges, complaints, knowledgeBaseEntries, subcategories } from "../drizzle/schema";
+import { consumePasswordReset, createAdminSession, createPasswordReset, destroyAdminSession, generateCollegeCode, hashPassword, verifyPassword } from "./adminAuth";
 import { getAdminComplaints, getAdminStats, getDb, getPublicCategories, getPublicKnowledgeBaseEntries, getPublicSubcategories, searchPublicHelp } from "./db";
+import { storagePut } from "./storage";
+import { sendAdminPasswordResetEmail } from "./email";
+import { systemRouter } from "./_core/systemRouter";
+import { getSessionCookieOptions } from "./_core/cookies";
+import { publicProcedure, router } from "./_core/trpc";
 
-const categoryInput = z.object({ collegeId: z.number().int().positive().default(1), name: z.string().trim().min(2).max(120), description: z.string().trim().max(1000).nullable().optional(), icon: z.string().trim().min(1).max(48).default("CircleHelp"), sortOrder: z.number().int().min(0).default(0), isActive: z.boolean().default(true) });
-const subcategoryInput = z.object({ categoryId: z.number().int().positive(), name: z.string().trim().min(2).max(120), description: z.string().trim().max(1000).nullable().optional(), sortOrder: z.number().int().min(0).default(0), isActive: z.boolean().default(true) });
-const knowledgeInput = z.object({ subcategoryId: z.number().int().positive(), question: z.string().trim().min(5).max(2000), answer: z.string().trim().min(5).max(8000), sortOrder: z.number().int().min(0).default(0), isActive: z.boolean().default(true) });
+const collegeIdSchema = z.number().int().positive();
+const passwordSchema = z.string().min(8, "Use at least 8 characters.").max(128).refine(value => /[A-Za-z]/.test(value) && /\d/.test(value), "Include at least one letter and one number.");
 const statusSchema = z.enum(["open", "in_progress", "resolved", "closed"]);
+const categoryInput = z.object({ name: z.string().trim().min(2).max(120), description: z.string().trim().max(2000).nullable().optional(), icon: z.string().trim().max(48).default("CircleHelp"), sortOrder: z.number().int().min(0).max(9999).default(0), isActive: z.boolean().default(true) });
+const subcategoryInput = z.object({ categoryId: collegeIdSchema, name: z.string().trim().min(2).max(120), description: z.string().trim().max(2000).nullable().optional(), sortOrder: z.number().int().min(0).max(9999).default(0), isActive: z.boolean().default(true) });
+const imageInput = z.object({ contentType: z.enum(["image/jpeg", "image/png", "image/webp"]), fileName: z.string().trim().min(1).max(160), base64: z.string().min(8).max(7_000_000) });
+const knowledgeInput = z.object({ subcategoryId: collegeIdSchema, question: z.string().trim().min(4).max(5000), answer: z.string().trim().min(4).max(12000), sortOrder: z.number().int().min(0).max(9999).default(0), isActive: z.boolean().default(true), image: imageInput.optional(), removeImage: z.boolean().optional() });
 
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Administrator access is required." });
-  return next({ ctx });
-});
+function requireDb<T>(db: T | null): T { if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable." }); return db; }
+function trackId() { return `CH-${crypto.randomBytes(4).toString("hex").toUpperCase()}-${Date.now().toString(36).toUpperCase()}`; }
+const adminProcedure = publicProcedure.use(({ ctx, next }) => { if (!ctx.admin) throw new TRPCError({ code: "UNAUTHORIZED", message: "Please sign in to a campus administrator account." }); return next({ ctx }); });
+function currentAdmin(ctx: { admin: NonNullable<any> }) { return ctx.admin; }
 
-function requireDb(db: Awaited<ReturnType<typeof getDb>>) {
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The data service is unavailable. Please try again shortly." });
-  return db;
-}
-
-async function createTrackingId() {
-  const db = requireDb(await getDb());
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const trackingId = `CH-${randomBytes(4).toString("hex").toUpperCase()}`;
-    const existing = await db.select({ id: complaints.id }).from(complaints).where(eq(complaints.trackingId, trackingId)).limit(1);
-    if (!existing.length) return trackingId;
-  }
-  throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Could not create a tracking number. Please resubmit your request." });
-}
+async function assertCategoryForCollege(db: any, collegeId: number, categoryId: number) { const [category] = await db.select().from(categories).where(and(eq(categories.id, categoryId), eq(categories.collegeId, collegeId))).limit(1); if (!category) throw new TRPCError({ code: "FORBIDDEN", message: "This topic does not belong to your college." }); return category; }
+async function assertSubcategoryForCollege(db: any, collegeId: number, subcategoryId: number) { const [row] = await db.select({ subcategory: subcategories }).from(subcategories).innerJoin(categories, eq(subcategories.categoryId, categories.id)).where(and(eq(subcategories.id, subcategoryId), eq(categories.collegeId, collegeId))).limit(1); if (!row) throw new TRPCError({ code: "FORBIDDEN", message: "This area does not belong to your college." }); return row.subcategory; }
+async function assertEntryForCollege(db: any, collegeId: number, entryId: number) { const [row] = await db.select({ entry: knowledgeBaseEntries }).from(knowledgeBaseEntries).innerJoin(subcategories, eq(knowledgeBaseEntries.subcategoryId, subcategories.id)).innerJoin(categories, eq(subcategories.categoryId, categories.id)).where(and(eq(knowledgeBaseEntries.id, entryId), eq(categories.collegeId, collegeId))).limit(1); if (!row) throw new TRPCError({ code: "FORBIDDEN", message: "This answer does not belong to your college." }); return row.entry; }
+async function saveImage(collegeId: number, image?: z.infer<typeof imageInput>) { if (!image) return undefined; const bytes = Buffer.from(image.base64, "base64"); if (!bytes.length || bytes.length > 5 * 1024 * 1024) throw new TRPCError({ code: "BAD_REQUEST", message: "Images must be no larger than 5 MB." }); const extension = image.contentType.split("/")[1]; return storagePut(`knowledge/${collegeId}/${crypto.randomUUID()}.${extension}`, bytes, image.contentType); }
 
 export const appRouter = router({
   system: systemRouter,
@@ -43,61 +39,52 @@ export const appRouter = router({
       return { success: true } as const;
     }),
   }),
-  catalog: router({
-    categories: publicProcedure.query(getPublicCategories),
-    subcategories: publicProcedure.input(z.object({ categoryId: z.number().int().positive() })).query(({ input }) => getPublicSubcategories(input.categoryId)),
-    questions: publicProcedure.input(z.object({ subcategoryId: z.number().int().positive() })).query(({ input }) => getPublicKnowledgeBaseEntries(input.subcategoryId)),
-    search: publicProcedure.input(z.object({ query: z.string().trim().min(2).max(80) })).query(({ input }) => searchPublicHelp(input.query)),
+  colleges: router({
+    search: publicProcedure.input(z.object({ query: z.string().trim().max(160).default("") })).query(async ({ input }) => { const db = requireDb(await getDb()); const term = `%${input.query}%`; return db.select({ id: colleges.id, name: colleges.name, code: colleges.code, location: colleges.location, description: colleges.description }).from(colleges).where(and(eq(colleges.isActive, true), input.query ? or(like(colleges.name, term), like(colleges.code, term))! : undefined)).orderBy(asc(colleges.name)).limit(10); }),
   }),
-  publicRequests: router({
-    submit: publicProcedure.input(z.object({
-      collegeId: z.number().int().positive().default(1), type: z.enum(["complaint", "enquiry"]), categoryId: z.number().int().positive().nullable().optional(), subcategoryId: z.number().int().positive().nullable().optional(),
-      subject: z.string().trim().min(5).max(200), description: z.string().trim().min(15).max(8000), contactName: z.string().trim().min(2).max(120),
-      contactEmail: z.string().trim().email().max(320).nullable().optional(), contactPhone: z.string().trim().min(7).max(32).nullable().optional(),
-    }).refine(data => Boolean(data.contactEmail || data.contactPhone), { message: "Provide an email address or phone number so the campus team can respond.", path: ["contactEmail"] }))
-      .mutation(async ({ input }) => {
-        const db = requireDb(await getDb());
-        const trackingId = await createTrackingId();
-        await db.insert(complaints).values({ ...input, trackingId, categoryId: input.categoryId ?? null, subcategoryId: input.subcategoryId ?? null, contactEmail: input.contactEmail || null, contactPhone: input.contactPhone || null });
-        return { trackingId };
-      }),
-    track: publicProcedure.input(z.object({ trackingId: z.string().trim().toUpperCase().regex(/^CH-[A-F0-9]{8}$/, "Enter a valid tracking ID, such as CH-1A2B3C4D.") }))
-      .query(async ({ input }) => {
-        const db = requireDb(await getDb());
-        const [result] = await db.select({ trackingId: complaints.trackingId, type: complaints.type, subject: complaints.subject, status: complaints.status, createdAt: complaints.createdAt, updatedAt: complaints.updatedAt, categoryName: categories.name, subcategoryName: subcategories.name })
-          .from(complaints).leftJoin(categories, eq(complaints.categoryId, categories.id)).leftJoin(subcategories, eq(complaints.subcategoryId, subcategories.id))
-          .where(eq(complaints.trackingId, input.trackingId)).limit(1);
-        if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "We could not find a request with that tracking ID." });
-        return result;
-      }),
+  catalog: router({
+    categories: publicProcedure.input(z.object({ collegeId: collegeIdSchema })).query(({ input }) => getPublicCategories(input.collegeId)),
+    subcategories: publicProcedure.input(z.object({ collegeId: collegeIdSchema, categoryId: collegeIdSchema })).query(async ({ input }) => (await getPublicSubcategories(input.collegeId, input.categoryId)).map(item => item.subcategory)),
+    questions: publicProcedure.input(z.object({ collegeId: collegeIdSchema, subcategoryId: collegeIdSchema })).query(async ({ input }) => (await getPublicKnowledgeBaseEntries(input.collegeId, input.subcategoryId)).map(item => item.entry)),
+    search: publicProcedure.input(z.object({ collegeId: collegeIdSchema, query: z.string().trim().min(2).max(160) })).query(({ input }) => searchPublicHelp(input.collegeId, input.query)),
+  }),
+  requests: router({
+    submit: publicProcedure.input(z.object({ collegeId: collegeIdSchema, type: z.enum(["complaint", "enquiry"]), categoryId: collegeIdSchema.optional(), subcategoryId: collegeIdSchema.optional(), subject: z.string().trim().min(4).max(200), description: z.string().trim().min(10).max(8000), contactName: z.string().trim().min(2).max(120), contactEmail: z.string().trim().email().max(320).optional().or(z.literal("")), contactPhone: z.string().trim().max(32).optional().or(z.literal("")) })).mutation(async ({ input }) => { const db = requireDb(await getDb()); if (input.categoryId) await assertCategoryForCollege(db, input.collegeId, input.categoryId); if (input.subcategoryId) await assertSubcategoryForCollege(db, input.collegeId, input.subcategoryId); let id = trackId(); for (let attempts = 0; attempts < 4; attempts++) { const [existing] = await db.select({ id: complaints.id }).from(complaints).where(eq(complaints.trackingId, id)).limit(1); if (!existing) break; id = trackId(); } await db.insert(complaints).values({ ...input, trackingId: id, contactEmail: input.contactEmail || null, contactPhone: input.contactPhone || null }); return { trackingId: id }; }),
+    track: publicProcedure.input(z.object({ collegeId: collegeIdSchema, trackingId: z.string().trim().min(5).max(32) })).query(async ({ input }) => { const db = requireDb(await getDb()); const [complaint] = await db.select({ trackingId: complaints.trackingId, type: complaints.type, subject: complaints.subject, description: complaints.description, status: complaints.status, adminNotes: complaints.adminNotes, createdAt: complaints.createdAt, updatedAt: complaints.updatedAt, categoryName: categories.name, subcategoryName: subcategories.name }).from(complaints).leftJoin(categories, eq(complaints.categoryId, categories.id)).leftJoin(subcategories, eq(complaints.subcategoryId, subcategories.id)).where(and(eq(complaints.collegeId, input.collegeId), eq(complaints.trackingId, input.trackingId.toUpperCase()))).limit(1); if (!complaint) throw new TRPCError({ code: "NOT_FOUND", message: "No request was found for that ID at this college." }); return complaint; }),
+  }),
+  adminAuth: router({
+    me: publicProcedure.query(({ ctx }) => ctx.admin),
+    register: publicProcedure.input(z.object({ collegeName: z.string().trim().min(2).max(160), email: z.string().trim().email().max(320), password: passwordSchema })).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); const [existingAccount] = await db.select({ id: adminAccounts.id }).from(adminAccounts).where(eq(adminAccounts.email, input.email.toLowerCase())).limit(1); if (existingAccount) throw new TRPCError({ code: "CONFLICT", message: "An administrator account already uses this email. Please sign in instead." }); let [college] = await db.select().from(colleges).where(eq(colleges.name, input.collegeName)).limit(1); if (!college) { for (let attempts = 0; attempts < 6; attempts++) { const code = generateCollegeCode(); try { const result = await db.insert(colleges).values({ name: input.collegeName, code, description: `Help and support for ${input.collegeName}.`, isActive: true }); const id = Number((result as any)[0]?.insertId ?? (result as any).insertId); [college] = await db.select().from(colleges).where(eq(colleges.id, id)).limit(1); break; } catch { /* code collision: retry */ } } } if (!college) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "We could not create a college code. Please try again." }); const passwordHash = await hashPassword(input.password); const result = await db.insert(adminAccounts).values({ collegeId: college.id, email: input.email.toLowerCase(), passwordHash, isActive: true, lastSignedIn: new Date() }); const adminId = Number((result as any)[0]?.insertId ?? (result as any).insertId); await createAdminSession(adminId, ctx.req, ctx.res); return { college: { name: college.name, code: college.code } }; }),
+    login: publicProcedure.input(z.object({ email: z.string().trim().email().max(320), password: z.string().min(1).max(128) })).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); const [account] = await db.select().from(adminAccounts).where(eq(adminAccounts.email, input.email.toLowerCase())).limit(1); if (!account || !account.isActive || !(await verifyPassword(input.password, account.passwordHash))) throw new TRPCError({ code: "UNAUTHORIZED", message: "Incorrect email or password." }); await db.update(adminAccounts).set({ lastSignedIn: new Date() }).where(eq(adminAccounts.id, account.id)); await createAdminSession(account.id, ctx.req, ctx.res); return { success: true }; }),
+    logout: publicProcedure.mutation(async ({ ctx }) => { await destroyAdminSession(ctx.req, ctx.res); return { success: true }; }),
+    forgotPassword: publicProcedure.input(z.object({ email: z.string().trim().email().max(320) })).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); const [account] = await db.select({ account: adminAccounts, college: colleges }).from(adminAccounts).innerJoin(colleges, eq(adminAccounts.collegeId, colleges.id)).where(eq(adminAccounts.email, input.email.toLowerCase())).limit(1); if (account?.account.isActive) { const token = await createPasswordReset(account.account.id); const originHeader = ctx.req.headers.origin; const origin = typeof originHeader === "string" ? originHeader : `${ctx.req.protocol}://${ctx.req.get("host")}`; try { await sendAdminPasswordResetEmail({ to: account.account.email, collegeName: account.college.name, resetUrl: `${origin}/admin?reset=${encodeURIComponent(token)}` }); } catch (error) { console.error("[Email] Failed to send administrator password reset email", error); } } return { success: true }; }),
+    resetPassword: publicProcedure.input(z.object({ token: z.string().min(20).max(200), password: passwordSchema })).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); const reset = await consumePasswordReset(input.token); if (!reset) throw new TRPCError({ code: "BAD_REQUEST", message: "This reset link is invalid or has expired." }); const passwordHash = await hashPassword(input.password); await db.update(adminAccounts).set({ passwordHash }).where(eq(adminAccounts.id, reset.adminId)); await db.update(adminPasswordResets).set({ usedAt: new Date() }).where(eq(adminPasswordResets.id, reset.id)); await db.delete(adminSessions).where(eq(adminSessions.adminId, reset.adminId)); await createAdminSession(reset.adminId, ctx.req, ctx.res); return { success: true }; }),
+    changePassword: adminProcedure.input(z.object({ currentPassword: z.string().min(1).max(128), password: passwordSchema })).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); const admin = currentAdmin(ctx); const [account] = await db.select().from(adminAccounts).where(eq(adminAccounts.id, admin.id)).limit(1); if (!account || !(await verifyPassword(input.currentPassword, account.passwordHash))) throw new TRPCError({ code: "BAD_REQUEST", message: "Your current password is incorrect." }); await db.update(adminAccounts).set({ passwordHash: await hashPassword(input.password) }).where(eq(adminAccounts.id, admin.id)); await db.delete(adminSessions).where(eq(adminSessions.adminId, admin.id)); await createAdminSession(admin.id, ctx.req, ctx.res); return { success: true }; }),
   }),
   admin: router({
-    stats: adminProcedure.query(getAdminStats),
+    profile: adminProcedure.query(({ ctx }) => currentAdmin(ctx)),
+    stats: adminProcedure.query(({ ctx }) => getAdminStats(currentAdmin(ctx).collegeId)),
     categories: router({
-      list: adminProcedure.query(async () => { const db = requireDb(await getDb()); return db.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.name)); }),
-      create: adminProcedure.input(categoryInput).mutation(async ({ input }) => { const db = requireDb(await getDb()); await db.insert(categories).values(input); return { success: true }; }),
-      update: adminProcedure.input(categoryInput.extend({ id: z.number().int().positive() })).mutation(async ({ input }) => { const db = requireDb(await getDb()); const { id, ...changes } = input; await db.update(categories).set(changes).where(eq(categories.id, id)); return { success: true }; }),
-      delete: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => { const db = requireDb(await getDb()); await db.delete(categories).where(eq(categories.id, input.id)); return { success: true }; }),
+      list: adminProcedure.query(async ({ ctx }) => { const admin = currentAdmin(ctx); const db = requireDb(await getDb()); return db.select().from(categories).where(eq(categories.collegeId, admin.collegeId)).orderBy(asc(categories.sortOrder), asc(categories.name)); }),
+      create: adminProcedure.input(categoryInput).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); await db.insert(categories).values({ ...input, collegeId: currentAdmin(ctx).collegeId }); return { success: true }; }),
+      update: adminProcedure.input(categoryInput.extend({ id: collegeIdSchema })).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); const admin = currentAdmin(ctx); await assertCategoryForCollege(db, admin.collegeId, input.id); const { id, ...changes } = input; await db.update(categories).set(changes).where(eq(categories.id, id)); return { success: true }; }),
+      delete: adminProcedure.input(z.object({ id: collegeIdSchema })).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); await assertCategoryForCollege(db, currentAdmin(ctx).collegeId, input.id); await db.delete(categories).where(eq(categories.id, input.id)); return { success: true }; }),
     }),
     subcategories: router({
-      list: adminProcedure.query(async () => { const db = requireDb(await getDb()); return db.select({ subcategory: subcategories, categoryName: categories.name }).from(subcategories).innerJoin(categories, eq(subcategories.categoryId, categories.id)).orderBy(asc(categories.name), asc(subcategories.sortOrder), asc(subcategories.name)); }),
-      create: adminProcedure.input(subcategoryInput).mutation(async ({ input }) => { const db = requireDb(await getDb()); await db.insert(subcategories).values(input); return { success: true }; }),
-      update: adminProcedure.input(subcategoryInput.extend({ id: z.number().int().positive() })).mutation(async ({ input }) => { const db = requireDb(await getDb()); const { id, ...changes } = input; await db.update(subcategories).set(changes).where(eq(subcategories.id, id)); return { success: true }; }),
-      delete: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => { const db = requireDb(await getDb()); await db.delete(subcategories).where(eq(subcategories.id, input.id)); return { success: true }; }),
+      list: adminProcedure.query(async ({ ctx }) => { const admin = currentAdmin(ctx); const db = requireDb(await getDb()); return db.select({ subcategory: subcategories, categoryName: categories.name }).from(subcategories).innerJoin(categories, eq(subcategories.categoryId, categories.id)).where(eq(categories.collegeId, admin.collegeId)).orderBy(asc(categories.name), asc(subcategories.sortOrder), asc(subcategories.name)); }),
+      create: adminProcedure.input(subcategoryInput).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); await assertCategoryForCollege(db, currentAdmin(ctx).collegeId, input.categoryId); await db.insert(subcategories).values(input); return { success: true }; }),
+      update: adminProcedure.input(subcategoryInput.extend({ id: collegeIdSchema })).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); const admin = currentAdmin(ctx); await assertSubcategoryForCollege(db, admin.collegeId, input.id); await assertCategoryForCollege(db, admin.collegeId, input.categoryId); const { id, ...changes } = input; await db.update(subcategories).set(changes).where(eq(subcategories.id, id)); return { success: true }; }),
+      delete: adminProcedure.input(z.object({ id: collegeIdSchema })).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); await assertSubcategoryForCollege(db, currentAdmin(ctx).collegeId, input.id); await db.delete(subcategories).where(eq(subcategories.id, input.id)); return { success: true }; }),
     }),
     knowledge: router({
-      list: adminProcedure.query(async () => { const db = requireDb(await getDb()); return db.select({ entry: knowledgeBaseEntries, subcategoryName: subcategories.name, categoryName: categories.name }).from(knowledgeBaseEntries).innerJoin(subcategories, eq(knowledgeBaseEntries.subcategoryId, subcategories.id)).innerJoin(categories, eq(subcategories.categoryId, categories.id)).orderBy(asc(categories.name), asc(subcategories.name), asc(knowledgeBaseEntries.sortOrder)); }),
-      create: adminProcedure.input(knowledgeInput).mutation(async ({ input }) => { const db = requireDb(await getDb()); await db.insert(knowledgeBaseEntries).values(input); return { success: true }; }),
-      update: adminProcedure.input(knowledgeInput.extend({ id: z.number().int().positive() })).mutation(async ({ input }) => { const db = requireDb(await getDb()); const { id, ...changes } = input; await db.update(knowledgeBaseEntries).set(changes).where(eq(knowledgeBaseEntries.id, id)); return { success: true }; }),
-      delete: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => { const db = requireDb(await getDb()); await db.delete(knowledgeBaseEntries).where(eq(knowledgeBaseEntries.id, input.id)); return { success: true }; }),
+      list: adminProcedure.query(async ({ ctx }) => { const admin = currentAdmin(ctx); const db = requireDb(await getDb()); return db.select({ entry: knowledgeBaseEntries, subcategoryName: subcategories.name, categoryName: categories.name }).from(knowledgeBaseEntries).innerJoin(subcategories, eq(knowledgeBaseEntries.subcategoryId, subcategories.id)).innerJoin(categories, eq(subcategories.categoryId, categories.id)).where(eq(categories.collegeId, admin.collegeId)).orderBy(asc(categories.name), asc(subcategories.name), asc(knowledgeBaseEntries.sortOrder)); }),
+      create: adminProcedure.input(knowledgeInput).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); const admin = currentAdmin(ctx); await assertSubcategoryForCollege(db, admin.collegeId, input.subcategoryId); const image = await saveImage(admin.collegeId, input.image); const { image: _image, removeImage: _remove, ...values } = input; await db.insert(knowledgeBaseEntries).values({ ...values, imageKey: image?.key ?? null, imageUrl: image?.url ?? null }); return { success: true }; }),
+      update: adminProcedure.input(knowledgeInput.extend({ id: collegeIdSchema })).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); const admin = currentAdmin(ctx); const existing = await assertEntryForCollege(db, admin.collegeId, input.id); await assertSubcategoryForCollege(db, admin.collegeId, input.subcategoryId); const image = await saveImage(admin.collegeId, input.image); const { id, image: _image, removeImage, ...values } = input; await db.update(knowledgeBaseEntries).set({ ...values, imageKey: image?.key ?? (removeImage ? null : existing.imageKey), imageUrl: image?.url ?? (removeImage ? null : existing.imageUrl) }).where(eq(knowledgeBaseEntries.id, id)); return { success: true }; }),
+      delete: adminProcedure.input(z.object({ id: collegeIdSchema })).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); await assertEntryForCollege(db, currentAdmin(ctx).collegeId, input.id); await db.delete(knowledgeBaseEntries).where(eq(knowledgeBaseEntries.id, input.id)); return { success: true }; }),
     }),
     complaints: router({
-      list: adminProcedure.input(z.object({ status: statusSchema.optional(), categoryId: z.number().int().positive().optional(), search: z.string().max(200).optional() })).query(({ input }) => getAdminComplaints(input)),
-      update: adminProcedure.input(z.object({ id: z.number().int().positive(), status: statusSchema, adminNotes: z.string().trim().max(8000).nullable().optional() })).mutation(async ({ input }) => { const db = requireDb(await getDb()); await db.update(complaints).set({ status: input.status, adminNotes: input.adminNotes ?? null }).where(eq(complaints.id, input.id)); return { success: true }; }),
-    }),
-    users: router({
-      list: adminProcedure.query(async () => { const db = requireDb(await getDb()); return db.select({ id: users.id, name: users.name, email: users.email, role: users.role, lastSignedIn: users.lastSignedIn, createdAt: users.createdAt }).from(users).orderBy(asc(users.name)); }),
-      updateRole: adminProcedure.input(z.object({ id: z.number().int().positive(), role: z.enum(["user", "admin"]) })).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); if (input.id === ctx.user.id && input.role !== "admin") throw new TRPCError({ code: "BAD_REQUEST", message: "You cannot remove your own administrator access." }); await db.update(users).set({ role: input.role }).where(eq(users.id, input.id)); return { success: true }; }),
+      list: adminProcedure.input(z.object({ status: statusSchema.optional(), categoryId: collegeIdSchema.optional(), search: z.string().max(200).optional() })).query(({ input, ctx }) => getAdminComplaints(currentAdmin(ctx).collegeId, input)),
+      update: adminProcedure.input(z.object({ id: collegeIdSchema, status: statusSchema, adminNotes: z.string().trim().max(8000).nullable().optional() })).mutation(async ({ input, ctx }) => { const db = requireDb(await getDb()); const admin = currentAdmin(ctx); const [complaint] = await db.select({ id: complaints.id }).from(complaints).where(and(eq(complaints.id, input.id), eq(complaints.collegeId, admin.collegeId))).limit(1); if (!complaint) throw new TRPCError({ code: "FORBIDDEN", message: "This request does not belong to your college." }); await db.update(complaints).set({ status: input.status, adminNotes: input.adminNotes ?? null }).where(eq(complaints.id, input.id)); return { success: true }; }),
     }),
   }),
 });

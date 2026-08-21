@@ -67,6 +67,8 @@ export const knowledgeBaseEntries = mysqlTable(
     subcategoryId: int("subcategoryId").notNull().references(() => subcategories.id, { onDelete: "cascade" }),
     question: text("question").notNull(),
     answer: text("answer").notNull(),
+    imageKey: varchar("imageKey", { length: 512 }),
+    imageUrl: varchar("imageUrl", { length: 768 }),
     sortOrder: int("sortOrder").default(0).notNull(),
     isActive: boolean("isActive").default(true).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -74,6 +76,35 @@ export const knowledgeBaseEntries = mysqlTable(
   },
   table => [index("knowledge_subcategory_idx").on(table.subcategoryId)],
 );
+
+export const adminAccounts = mysqlTable("adminAccounts", {
+  id: int("id").autoincrement().primaryKey(),
+  collegeId: int("collegeId").notNull().references(() => colleges.id, { onDelete: "cascade" }),
+  email: varchar("email", { length: 320 }).notNull().unique(),
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  lastSignedIn: timestamp("lastSignedIn"),
+}, table => [index("admin_accounts_college_idx").on(table.collegeId)]);
+
+export const adminSessions = mysqlTable("adminSessions", {
+  id: int("id").autoincrement().primaryKey(),
+  adminId: int("adminId").notNull().references(() => adminAccounts.id, { onDelete: "cascade" }),
+  tokenHash: varchar("tokenHash", { length: 128 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  lastSeenAt: timestamp("lastSeenAt").defaultNow().notNull(),
+}, table => [index("admin_sessions_admin_idx").on(table.adminId), index("admin_sessions_expiry_idx").on(table.expiresAt)]);
+
+export const adminPasswordResets = mysqlTable("adminPasswordResets", {
+  id: int("id").autoincrement().primaryKey(),
+  adminId: int("adminId").notNull().references(() => adminAccounts.id, { onDelete: "cascade" }),
+  tokenHash: varchar("tokenHash", { length: 128 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("admin_resets_admin_idx").on(table.adminId), index("admin_resets_expiry_idx").on(table.expiresAt)]);
 
 export const complaints = mysqlTable(
   "complaints",
@@ -109,3 +140,4 @@ export type Category = typeof categories.$inferSelect;
 export type Subcategory = typeof subcategories.$inferSelect;
 export type KnowledgeBaseEntry = typeof knowledgeBaseEntries.$inferSelect;
 export type Complaint = typeof complaints.$inferSelect;
+export type AdminAccount = typeof adminAccounts.$inferSelect;
