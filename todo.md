@@ -44,3 +44,4 @@
 - [x] Seed and verify distinct topics, areas, and predefined Q&A for at least two colleges in the rebuilt multi-college platform.
 - [x] Remove built-in demo colleges and all dependent sample administrator and helpdesk data.
 - [x] Verify the college search is empty until a user creates a college, then save the clean-catalogue checkpoint.
+- [x] Rename visible application branding and title metadata from Campus Helpdesk to CampAssist.
